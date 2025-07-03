@@ -4,6 +4,7 @@ import com.denizcan.moviedatabase.model.Movie;
 import com.denizcan.moviedatabase.service.MovieService;
 import com.denizcan.moviedatabase.dto.MovieDTO;
 import com.denizcan.moviedatabase.mapper.MovieMapper;
+import com.denizcan.moviedatabase.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,9 +54,9 @@ public class MovieController {
     })
     public ResponseEntity<MovieDTO> getMovieById(
             @Parameter(description = "Film ID'si", required = true) @PathVariable Long id) {
-        Optional<Movie> movie = movieService.findById(id);
-        return movie.map(m -> ResponseEntity.ok(MovieMapper.toDTO(m)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Movie movie = movieService.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Film", "id", id));
+        return ResponseEntity.ok(MovieMapper.toDTO(movie));
     }
 
     @PostMapping
@@ -63,19 +65,15 @@ public class MovieController {
         @ApiResponse(responseCode = "200", description = "Film başarıyla oluşturuldu",
                     content = @Content(mediaType = "application/json", 
                     schema = @Schema(implementation = MovieDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Geçersiz veri"),
         @ApiResponse(responseCode = "500", description = "Sunucu hatası")
     })
-    public ResponseEntity<?> createMovie(
+    public ResponseEntity<MovieDTO> createMovie(
             @Parameter(description = "Oluşturulacak film bilgileri", required = true) 
-            @RequestBody MovieDTO movieDTO) {
-        try {
-            Movie movie = MovieMapper.toEntity(movieDTO);
-            Movie savedMovie = movieService.save(movie);
-            return ResponseEntity.ok(MovieMapper.toDTO(savedMovie));
-        } catch (Exception e) {
-            return ResponseEntity.status(500)
-                .body("Hata: " + e.getMessage() + "\nStack Trace: " + e.getStackTrace()[0]);
-        }
+            @Valid @RequestBody MovieDTO movieDTO) {
+        Movie movie = MovieMapper.toEntity(movieDTO);
+        Movie savedMovie = movieService.save(movie);
+        return ResponseEntity.ok(MovieMapper.toDTO(savedMovie));
     }
 
     @PutMapping("/{id}")
@@ -84,13 +82,15 @@ public class MovieController {
         @ApiResponse(responseCode = "200", description = "Film başarıyla güncellendi",
                     content = @Content(mediaType = "application/json", 
                     schema = @Schema(implementation = MovieDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Geçersiz veri"),
         @ApiResponse(responseCode = "404", description = "Film bulunamadı")
     })
     public ResponseEntity<MovieDTO> updateMovie(
             @Parameter(description = "Film ID'si", required = true) @PathVariable Long id,
-            @Parameter(description = "Güncellenecek film bilgileri", required = true) @RequestBody MovieDTO movieDTO) {
+            @Parameter(description = "Güncellenecek film bilgileri", required = true) 
+            @Valid @RequestBody MovieDTO movieDTO) {
         if (!movieService.findById(id).isPresent()) {
-            return ResponseEntity.notFound().build();
+            throw new ResourceNotFoundException("Film", "id", id);
         }
         Movie movie = MovieMapper.toEntity(movieDTO);
         movie.setId(id);
@@ -107,7 +107,7 @@ public class MovieController {
     public ResponseEntity<Void> deleteMovie(
             @Parameter(description = "Film ID'si", required = true) @PathVariable Long id) {
         if (!movieService.findById(id).isPresent()) {
-            return ResponseEntity.notFound().build();
+            throw new ResourceNotFoundException("Film", "id", id);
         }
         movieService.deleteById(id);
         return ResponseEntity.noContent().build();
