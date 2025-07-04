@@ -1,6 +1,7 @@
 package com.denizcan.moviedatabase.controller;
 
 import com.denizcan.moviedatabase.model.Movie;
+import com.denizcan.moviedatabase.model.MovieGenre;
 import com.denizcan.moviedatabase.service.MovieService;
 import com.denizcan.moviedatabase.dto.MovieDTO;
 import com.denizcan.moviedatabase.mapper.MovieMapper;
@@ -13,11 +14,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -111,5 +115,118 @@ public class MovieController {
         }
         movieService.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // Arama ve filtreleme endpoint'leri
+    @GetMapping("/search")
+    @Operation(summary = "Film arama", description = "Başlığa göre film arama")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Arama sonuçları başarıyla getirildi")
+    })
+    public List<MovieDTO> searchMovies(
+            @Parameter(description = "Aranacak film başlığı") @RequestParam String title) {
+        return movieService.findByTitle(title)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/year/{year}")
+    @Operation(summary = "Yıla göre filmler", description = "Belirli bir yılda yayınlanan filmleri getirir")
+    public List<MovieDTO> getMoviesByYear(
+            @Parameter(description = "Yayın yılı") @PathVariable Integer year) {
+        return movieService.findByYear(year)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/year-range")
+    @Operation(summary = "Yıl aralığına göre filmler", description = "Belirli yıl aralığında yayınlanan filmleri getirir")
+    public List<MovieDTO> getMoviesByYearRange(
+            @Parameter(description = "Başlangıç yılı") @RequestParam Integer startYear,
+            @Parameter(description = "Bitiş yılı") @RequestParam Integer endYear) {
+        return movieService.findByYearRange(startYear, endYear)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/rating/{minRating}")
+    @Operation(summary = "Minimum puana göre filmler", description = "Belirli minimum IMDB puanına sahip filmleri getirir")
+    public List<MovieDTO> getMoviesByMinRating(
+            @Parameter(description = "Minimum IMDB puanı") @PathVariable Double minRating) {
+        return movieService.findByMinRating(minRating)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/series")
+    @Operation(summary = "Seri filmler", description = "Tüm seri filmleri getirir")
+    public List<MovieDTO> getSeriesMovies() {
+        return movieService.findSeriesMovies()
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/series/{seriesName}")
+    @Operation(summary = "Seri filmleri", description = "Belirli bir serinin filmlerini getirir")
+    public List<MovieDTO> getMoviesBySeries(
+            @Parameter(description = "Seri adı") @PathVariable String seriesName) {
+        return movieService.findBySeriesName(seriesName)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/genre/{genre}")
+    @Operation(summary = "Türe göre filmler", description = "Belirli türdeki filmleri getirir")
+    public List<MovieDTO> getMoviesByGenre(
+            @Parameter(description = "Film türü") @PathVariable MovieGenre genre) {
+        return movieService.findByGenre(genre)
+                .stream()
+                .map(MovieMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/filter")
+    @Operation(summary = "Gelişmiş filtreleme", description = "Çoklu kriterlere göre film filtreleme")
+    public Page<MovieDTO> filterMovies(
+            @Parameter(description = "Film başlığı (opsiyonel)") @RequestParam(required = false) String title,
+            @Parameter(description = "Yayın yılı (opsiyonel)") @RequestParam(required = false) Integer year,
+            @Parameter(description = "Minimum IMDB puanı (opsiyonel)") @RequestParam(required = false) Double minRating,
+            @Parameter(description = "Sayfa numarası") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Sayfa boyutu") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sıralama alanı") @RequestParam(defaultValue = "title") String sortBy,
+            @Parameter(description = "Sıralama yönü") @RequestParam(defaultValue = "asc") String sortDir) {
+        
+        Sort sort = sortDir.equalsIgnoreCase("desc") ? 
+            Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+        
+        Page<Movie> movies = movieService.findMoviesWithFilters(title, year, minRating, pageable);
+        return movies.map(MovieMapper::toDTO);
+    }
+
+    @GetMapping("/top-rated")
+    @Operation(summary = "En yüksek puanlı filmler", description = "IMDB puanına göre en yüksek puanlı filmleri getirir")
+    public Page<MovieDTO> getTopRatedMovies(
+            @Parameter(description = "Sayfa numarası") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Sayfa boyutu") @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("imdbRating").descending());
+        Page<Movie> movies = movieService.findTopRatedMovies(pageable);
+        return movies.map(MovieMapper::toDTO);
+    }
+
+    @GetMapping("/latest")
+    @Operation(summary = "En yeni filmler", description = "Yayın yılına göre en yeni filmleri getirir")
+    public Page<MovieDTO> getLatestMovies(
+            @Parameter(description = "Sayfa numarası") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Sayfa boyutu") @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("year").descending());
+        Page<Movie> movies = movieService.findLatestMovies(pageable);
+        return movies.map(MovieMapper::toDTO);
     }
 } 
